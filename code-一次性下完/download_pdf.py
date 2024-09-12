@@ -104,51 +104,6 @@ def get_total_and_key_url(url):
     return file_identifier, decrypted_data, num
 
 
-# 获取章节
-def get_chp(bookid, name):
-    url = 'https://zengzhi.ipmph.com/zhbooks/zzfw_web?command=resourceChapterList'
-    params = {'json': json.dumps({"bookId": bookid})}
-
-    data = requests.get(url, params=params, headers=headers).json()['data']['chapterList'][1::]
-
-    chp_list = []
-
-    for item in data:
-        chp_id = item['id']
-        title = item['label']
-        chp_list.append((chp_id, title))
-        path = os.path.join(os.getcwd(), name)
-        if not os.path.exists(path):
-            os.makedirs(path)
-        path = os.path.join(path, title)
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-    return chp_list
-
-
-# 下载其他的pdf资源
-def start_download_res_pdf():
-    url_1 = input('输入url:')
-
-    url_1 = url_1.replace('#/', '')
-    parsed_url = urlparse(url_1)
-
-    query_string = parsed_url.query
-    query_params = parse_qs(query_string)
-
-    bookid_ = query_params.get('id', [None])[0]
-    esibn_ = query_params.get('eisbn', [None])[0]
-
-    response_bookname = requests.get(
-        'https://zengzhi.ipmph.com/zhbooks/zzfw_web?command=bookDetail',
-        params={'json': f'{{"bookId":"{bookid_}"}}'}).text
-    path_ = json.loads(response_bookname)['data']['title'] + 'word'
-
-    chp_list = get_chp(bookid_, path_)
-    download(chp_list, bookid_, path_, esibn_)
-
-
 # 进度条
 def progress_bar(progress, total_, bar_length=50):
     percent = 100 * (progress / float(total_))
@@ -247,8 +202,8 @@ def merge_pdf_and_marker(title, ide, total):
 
 
 # 下载电子课本算法
-def strat_download_book_pdf():
-    bookid_ = AES_decryption.AES_Cipher()[0]
+def strat_download_book_pdf(url=None):
+    bookid_ = AES_decryption.AES_Cipher(url)[0]
 
     response_pdf_url = requests.get(
         'https://zengzhi.ipmph.com/zhbooks/zzfw_web?command=bookDetail',
@@ -267,10 +222,85 @@ def strat_download_book_pdf():
 
     shutil.rmtree(os.path.abspath(f'{title}pdf'))
 
-while True:
-    try:
-        strat_download_book_pdf()
-    except Exception as e:
-        print(f'\033[31m{e}\033[0m')
-# strat_download_book_pdf()
-# merge_pdf_and_marker('卫生法（第6版）','bfe4801a8bc5489781740e555806efd5',32)
+
+def get_eisbn_bookid():
+    if not os.path.isfile(os.path.abspath('ids.txt')):
+        with open('ids.txt', 'w', encoding='utf-8'):
+            pass
+    with open(os.path.abspath('ids.txt'), 'r', encoding='utf-8') as f:
+        contents = f.read()
+    if contents:
+        pdf_list = contents.split('\n')
+    else:
+        pdf_list = []
+
+    list_ = []
+
+    # 定义find_ids函数，用于提取每本书的eisbn和id
+    def find_ids(list_book, list_):
+        for item in list_book:
+            eisbn = item['eisbn']
+            id_ = item['id']
+            title = item['title']
+            if not f'{title}{id_}' in pdf_list:
+                list_.append((id_, eisbn, title))
+                # with open(os.path.abspath('ids.txt'), 'a', encoding='utf-8') as f:
+                #     f.write(f'{title}{id_}\n')
+
+    url = 'https://zengzhi.ipmph.com/zhbooks/zzfw_web?command=bookList'
+
+    json_dicts = {"catalogId": "15238", "pageSize": 5, "pageIndex": 1, "keyWord": ""}
+
+    totalPage = None
+    pageIndex = 1
+
+    while True:
+        params = {'json': json.dumps(json_dicts)}
+        json_dicts['pageIndex'] = pageIndex + 1
+
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        bookList = data['data']['bookList']
+
+        find_ids(bookList, list_)
+
+        if totalPage is None:
+            totalPage = data['data']['totalPage']
+        if pageIndex >= totalPage:
+            break
+
+        pageIndex += 1
+
+    # print(list_)
+    return list_
+
+
+def encrypt_url(list_):
+    url = 'https://zengzhi.ipmph.com/#/bookDetail?'
+    iv = '{"words": [825373492, 892745528, 959459634, 859059510], "sigBytes": 16}'
+
+    text = f'bookId={list_[0]}&eisbn={list_[1]}'
+    text = AES_decryption.AES_encrypt(bytes(text, encoding='utf-8'))
+
+    encrypted_str = f'{{"encrypt":"{text}","iv":{iv}}}'
+    encrypted_str = AES_decryption.base64_encrypt(bytes(encrypted_str, 'utf-8'))
+    url = url + encrypted_str
+    return url
+
+
+def make_url_list():
+    list_ = get_eisbn_bookid()
+    for item in list_:
+        url = (encrypt_url(item))
+        try:
+            # strat_download_book_pdf(url)
+            with open(os.path.abspath('ids.txt'), 'a', encoding='utf-8') as f:
+                f.write(f'{item[2]}{item[0]}\n')
+        except Exception as e:
+            print(f'\033[31m{e}')
+            print(f'{item[2]}暂时无法下载\033[0m')
+    return
+
+
+make_url_list()
