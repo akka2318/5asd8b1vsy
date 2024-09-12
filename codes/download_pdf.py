@@ -104,51 +104,6 @@ def get_total_and_key_url(url):
     return file_identifier, decrypted_data, num
 
 
-# 获取章节
-def get_chp(bookid, name):
-    url = 'https://zengzhi.ipmph.com/zhbooks/zzfw_web?command=resourceChapterList'
-    params = {'json': json.dumps({"bookId": bookid})}
-
-    data = requests.get(url, params=params, headers=headers).json()['data']['chapterList'][1::]
-
-    chp_list = []
-
-    for item in data:
-        chp_id = item['id']
-        title = item['label']
-        chp_list.append((chp_id, title))
-        path = os.path.join(os.getcwd(), name)
-        if not os.path.exists(path):
-            os.makedirs(path)
-        path = os.path.join(path, title)
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-    return chp_list
-
-
-# 下载其他的pdf资源
-def start_download_res_pdf():
-    url_1 = input('输入url:')
-
-    url_1 = url_1.replace('#/', '')
-    parsed_url = urlparse(url_1)
-
-    query_string = parsed_url.query
-    query_params = parse_qs(query_string)
-
-    bookid_ = query_params.get('id', [None])[0]
-    esibn_ = query_params.get('eisbn', [None])[0]
-
-    response_bookname = requests.get(
-        'https://zengzhi.ipmph.com/zhbooks/zzfw_web?command=bookDetail',
-        params={'json': f'{{"bookId":"{bookid_}"}}'}).text
-    path_ = json.loads(response_bookname)['data']['title'] + 'word'
-
-    chp_list = get_chp(bookid_, path_)
-    download(chp_list, bookid_, path_, esibn_)
-
-
 # 进度条
 def progress_bar(progress, total_, bar_length=50):
     percent = 100 * (progress / float(total_))
